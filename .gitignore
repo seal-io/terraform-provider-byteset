@@ -1,0 +1,24 @@
+*.dll
+*.exe
+.DS_Store
+kubeconfig
+*.tfplan
+*.tfstate
+*.backup
+bin/
+.sbin/
+.dist/
+.terraform/
+*.db
+*.log
+*.bak
+*.sig
+*~
+.*.swp
+.idea
+.vscode/
+*.test
+.terraform.lock.hcl
+
+# output binary
+terraform-provider-byteset
