@@ -13,6 +13,8 @@ mkdir -p "${TEST_DIR}"
 function testacc() {
   TF_ACC=1 go test \
     -v \
+    -failfast \
+    -run="^TestAcc[A-Z]+" \
     -timeout=30m \
     "${ROOT_DIR}/..."
 }

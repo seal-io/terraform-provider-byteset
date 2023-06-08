@@ -46,9 +46,7 @@ func ParseAddress(addr string) (drv, dsn string, err error) {
 	}
 
 	if drv == "" {
-		err = errors.New(
-			"cannot recognize driver from database address",
-		)
+		err = errors.New("cannot recognize driver from database address")
 	}
 
 	return
@@ -64,25 +62,17 @@ func LoadDatabase(addr string) (drv string, db *sql.DB, err error) {
 	return
 }
 
-func IsDatabaseConnected(
-	ctx context.Context,
-	db *sql.DB,
-) (perr error) {
-	err := wait.PollImmediateUntilWithContext(ctx, 2*time.Second,
-		func(ctx context.Context) (bool, error) {
+func IsDatabaseConnected(ctx context.Context, db *sql.DB) (perr error) {
+	err := wait.PollImmediateUntil(2*time.Second,
+		func() (bool, error) {
 			perr = db.PingContext(ctx)
 			if perr != nil {
-				tflog.Error(
-					ctx,
-					"Cannot ping database",
-					map[string]any{
-						"error": perr,
-					},
-				)
+				tflog.Error(ctx, "Cannot ping database", map[string]any{"error": perr})
 			}
 
 			return perr == nil, ctx.Err()
 		},
+		ctx.Done(),
 	)
 	if err != nil {
 		if perr == nil {

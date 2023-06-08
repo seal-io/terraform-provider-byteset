@@ -199,7 +199,7 @@ function seal::format::run() {
   fi
 
   # shellcheck disable=SC2155
-  local golines_opts="-w -m 70 --no-reformat-tags --base-formatter=$(seal::format::gofumpt::bin)"
+  local golines_opts="-w -m 120 --no-reformat-tags --base-formatter=$(seal::format::gofumpt::bin)"
   seal::log::debug "golines ${golines_opts} ${path}"
   $(seal::format::golines::bin) ${golines_opts} "${path}"
 

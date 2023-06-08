@@ -25,9 +25,7 @@ type ResourcePipelineSource struct {
 	ConnMaxLife types.Int64  `tfsdk:"conn_max_life"`
 }
 
-func (r ResourcePipelineSource) Reflect(
-	ctx context.Context,
-) (pipeline.Source, error) {
+func (r ResourcePipelineSource) Reflect(ctx context.Context) (pipeline.Source, error) {
 	return pipeline.NewSource(
 		ctx,
 		r.Address.ValueString(),
@@ -44,11 +42,10 @@ type ResourcePipelineDestination struct {
 	ConnMaxOpen types.Int64  `tfsdk:"conn_max_open"`
 	ConnMaxIdle types.Int64  `tfsdk:"conn_max_idle"`
 	ConnMaxLife types.Int64  `tfsdk:"conn_max_life"`
+	Salt        types.String `tfsdk:"salt"`
 }
 
-func (r ResourcePipelineDestination) Reflect(
-	ctx context.Context,
-) (pipeline.Destination, error) {
+func (r ResourcePipelineDestination) Reflect(ctx context.Context) (pipeline.Destination, error) {
 	return pipeline.NewDestination(
 		ctx,
 		r.Address.ValueString(),
@@ -66,42 +63,34 @@ type ResourcePipeline struct {
 	ID          types.String                `tfsdk:"id"`
 }
 
-func (r ResourcePipeline) Equal(l ResourcePipeline) bool {
-	return r.Source.Address.Equal(l.Source.Address) &&
-		r.Destination.Address.Equal(l.Destination.Address)
-}
-
 func (r ResourcePipeline) Corrupted() bool {
 	return r.ID.ValueString() != r.Hash()
+}
+
+func (r ResourcePipeline) Equal(l ResourcePipeline) bool {
+	return r.Source.Address.Equal(l.Source.Address) &&
+		r.Destination.Address.Equal(l.Destination.Address) &&
+		r.Destination.Salt.Equal(l.Destination.Salt)
 }
 
 func (r ResourcePipeline) Hash() string {
 	return strx.Sum(
 		r.Source.Address.ValueString(),
-		r.Destination.Address.ValueString())
+		r.Destination.Address.ValueString(),
+		r.Destination.Salt.ValueString())
 }
 
 func NewResourcePipeline() resource.Resource {
 	return ResourcePipeline{}
 }
 
-func (r ResourcePipeline) Metadata(
-	ctx context.Context,
-	req resource.MetadataRequest,
-	resp *resource.MetadataResponse,
-) {
-	resp.TypeName = strings.Join(
-		[]string{req.ProviderTypeName, "pipeline"},
-		"_",
-	)
+func (r ResourcePipeline) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = strings.Join([]string{req.ProviderTypeName, "pipeline"}, "_")
 }
 
-func (r ResourcePipeline) Schema(
-	ctx context.Context,
-	req resource.SchemaRequest,
-	resp *resource.SchemaResponse,
-) {
+func (r ResourcePipeline) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: `Specify the pipeline to seed database.`,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,
@@ -115,16 +104,16 @@ func (r ResourcePipeline) Schema(
 choose from local/remote SQL file or database.
 
   - Local/Remote SQL file format:
-	- file:///path/to/filename
-    - http(s)://...
+	  - file:///path/to/filename
+	  - http(s)://...
 
   - Database address format:
-	- mysql://[username:[password]@][address][:port][/dbname][?param1=value1&...]
-	- maria://[username:[password]@][address][:port][/dbname][?param1=value1&...]
-	- postgres://[username:[password]@][address][:port][/dbname][?param1=value1&...]
-	- sqlite:///path/to/filename.db[?param1=value1&...]
-	- oracle://[username:[password]@][address][:port][/service][?param1=value1&...]
-	- mssql://[username:[password]@][address][:port][/instance][?database=dbname&param1=value1&...]`,
+	  - mysql://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
+	  - maria://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
+	  - postgres://[username:[password]@][address][:port][/dbname][?param1=value1&...]
+	  - sqlite:///path/to/filename.db[?param1=value1&...]
+	  - oracle://[username:[password]@][address][:port][/service][?param1=value1&...]
+	  - mssql://[username:[password]@][address][:port][/instance][?database=dbname&param1=value1&...]`,
 					},
 					"conn_max_open": schema.Int64Attribute{
 						Optional:    true,
@@ -142,7 +131,7 @@ choose from local/remote SQL file or database.
 						Optional: true,
 						Computed: true,
 						Default: int64default.StaticInt64(
-							10 * 60,
+							5 * 60,
 						),
 						Description: `The maximum lifetime in seconds of source database.`,
 					},
@@ -156,12 +145,12 @@ choose from local/remote SQL file or database.
 						Description: `The address of destination database, which to receive the dataset.
 
   - Database address format:
-	- mysql://[username:[password]@][address][:port][/dbname][?param1=value1&...]
-	- maria://[username:[password]@][address][:port][/dbname][?param1=value1&...]
-	- postgres://[username:[password]@][address][:port][/dbname][?param1=value1&...]
-	- sqlite:///path/to/filename.db[?param1=value1&...]
-	- oracle://[username:[password]@][address][:port][/service][?param1=value1&...]
-	- mssql://[username:[password]@][address][:port][/instance][?database=dbname&param1=value1&...]`,
+	  - mysql://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
+	  - maria://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
+	  - postgres://[username:[password]@][address][:port][/dbname][?param1=value1&...]
+	  - sqlite:///path/to/filename.db[?param1=value1&...]
+	  - oracle://[username:[password]@][address][:port][/service][?param1=value1&...]
+	  - mssql://[username:[password]@][address][:port][/instance][?database=dbname&param1=value1&...]`,
 					},
 					"conn_max_open": schema.Int64Attribute{
 						Optional:    true,
@@ -179,9 +168,14 @@ choose from local/remote SQL file or database.
 						Optional: true,
 						Computed: true,
 						Default: int64default.StaticInt64(
-							10 * 60,
+							5 * 60,
 						),
 						Description: `The maximum lifetime in seconds of destination database.`,
+					},
+					"salt": schema.StringAttribute{
+						Optional: true,
+						Description: `The salt assist calculating the destination database has changed 
+but the address not, like the database Terraform Managed Resource ID.`,
 					},
 				},
 			},
@@ -189,11 +183,7 @@ choose from local/remote SQL file or database.
 	}
 }
 
-func (r ResourcePipeline) Create(
-	ctx context.Context,
-	req resource.CreateRequest,
-	resp *resource.CreateResponse,
-) {
+func (r ResourcePipeline) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	plan := r
 
 	if plan.ID.IsNull() {
@@ -249,11 +239,7 @@ func (r ResourcePipeline) Create(
 		(*resource.ReadResponse)(resp))
 }
 
-func (r ResourcePipeline) Read(
-	ctx context.Context,
-	req resource.ReadRequest,
-	resp *resource.ReadResponse,
-) {
+func (r ResourcePipeline) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	state := r
 
 	if state.ID.IsNull() {
@@ -276,11 +262,7 @@ func (r ResourcePipeline) Read(
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r ResourcePipeline) Update(
-	ctx context.Context,
-	req resource.UpdateRequest,
-	resp *resource.UpdateResponse,
-) {
+func (r ResourcePipeline) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan, state ResourcePipeline
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -306,9 +288,5 @@ func (r ResourcePipeline) Update(
 	}
 }
 
-func (r ResourcePipeline) Delete(
-	ctx context.Context,
-	req resource.DeleteRequest,
-	resp *resource.DeleteResponse,
-) {
+func (r ResourcePipeline) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 }

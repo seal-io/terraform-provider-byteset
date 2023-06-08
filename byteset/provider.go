@@ -25,38 +25,22 @@ func NewProvider() provider.Provider {
 	return Provider{}
 }
 
-func (p Provider) Metadata(
-	ctx context.Context,
-	req provider.MetadataRequest,
-	resp *provider.MetadataResponse,
-) {
+func (p Provider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
 	resp.TypeName = ProviderType
 	resp.Version = version.Version
 }
 
-func (p Provider) Schema(
-	ctx context.Context,
-	req provider.SchemaRequest,
-	resp *provider.SchemaResponse,
-) {
+func (p Provider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 }
 
-func (p Provider) Configure(
-	ctx context.Context,
-	req provider.ConfigureRequest,
-	resp *provider.ConfigureResponse,
-) {
+func (p Provider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 }
 
-func (p Provider) DataSources(
-	ctx context.Context,
-) []func() datasource.DataSource {
+func (p Provider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return nil
 }
 
-func (p Provider) Resources(
-	ctx context.Context,
-) []func() resource.Resource {
+func (p Provider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewResourcePipeline,
 	}

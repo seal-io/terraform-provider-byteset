@@ -13,10 +13,18 @@ The ByteSet provider for Terraform is a plugin that seed your database for Devel
 - Seed your development database with real data.
 - Warm up your testing dataset.
 
-## Highlight
-
-
 ## Example Usage
 
+### SQLite
+
+{{tffile "examples/sqlite/main.tf"}}
+
+### AWS RDS
+
+{{tffile "examples/aws-rds/main.tf"}}
+
+### AliCloud RDS
+
+{{tffile "examples/alicloud-rds/main.tf"}}
 
 {{ .SchemaMarkdown | trimspace }}

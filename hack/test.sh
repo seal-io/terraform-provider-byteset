@@ -22,6 +22,7 @@ function test() {
     -cover \
     -timeout=30m \
     -tags="${tags[*]}" \
+    -run="^Test[^(Acc)]" \
     -coverprofile="${TEST_DIR}/coverage.out" \
     "${ROOT_DIR}/..."
 }

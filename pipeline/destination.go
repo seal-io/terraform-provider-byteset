@@ -16,18 +16,10 @@ type Destination interface {
 	Exec(ctx context.Context, query string, args ...any) error
 }
 
-func NewDestination(
-	ctx context.Context,
-	addr string,
-	opts ...Option,
-) (Destination, error) {
+func NewDestination(ctx context.Context, addr string, opts ...Option) (Destination, error) {
 	drv, db, err := sqlx.LoadDatabase(addr)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"cannot load database from %s: %w",
-			addr,
-			err,
-		)
+		return nil, fmt.Errorf("cannot load database from %q: %w", addr, err)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -35,11 +27,7 @@ func NewDestination(
 
 	err = sqlx.IsDatabaseConnected(ctx, db)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"cannot connect database on %s: %w",
-			addr,
-			err,
-		)
+		return nil, fmt.Errorf("cannot connect database on %q: %w", addr, err)
 	}
 
 	for i := range opts {
@@ -62,11 +50,7 @@ func (d dst) Close() error {
 	return d.db.Close()
 }
 
-func (d dst) Exec(
-	ctx context.Context,
-	query string,
-	args ...any,
-) error {
+func (d dst) Exec(ctx context.Context, query string, args ...any) error {
 	_, err := d.db.ExecContext(ctx, query, args...)
 	return err
 }

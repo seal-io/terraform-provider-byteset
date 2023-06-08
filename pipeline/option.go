@@ -19,20 +19,12 @@ func WithConnMaxOpen(o int) Option {
 
 func WithConnMaxIdle(i int) Option {
 	return func(db *sql.DB) {
-		if i <= 0 {
-			return
-		}
-
 		db.SetMaxIdleConns(i)
 	}
 }
 
 func WithConnMaxLife(d time.Duration) Option {
 	return func(db *sql.DB) {
-		if d <= 0 {
-			return
-		}
-
 		db.SetConnMaxLifetime(d)
 	}
 }

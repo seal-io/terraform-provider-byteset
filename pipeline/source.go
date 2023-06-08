@@ -23,22 +23,14 @@ type Source interface {
 	Pipe(ctx context.Context, destination Destination) error
 }
 
-func NewSource(
-	ctx context.Context,
-	addr string,
-	opts ...Option,
-) (Source, error) {
+func NewSource(ctx context.Context, addr string, opts ...Option) (Source, error) {
 	switch {
 	case strings.HasPrefix(addr, "file://"):
 		addr = strings.TrimPrefix(addr, "file://")
 
 		local, err := os.Open(addr)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"cannot open local file from %s: %w",
-				addr,
-				err,
-			)
+			return nil, fmt.Errorf("cannot open local file from %q: %w", addr, err)
 		}
 
 		return srcFile{f: local}, nil
@@ -46,11 +38,7 @@ func NewSource(
 	case strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://"):
 		remote, err := http.Get(addr)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"cannot open remote file from %s: %w",
-				addr,
-				err,
-			)
+			return nil, fmt.Errorf("cannot open remote file from %q: %w", addr, err)
 		}
 
 		return srcFile{f: remote.Body}, nil
@@ -60,11 +48,7 @@ func NewSource(
 
 	drv, db, err := sqlx.LoadDatabase(addr)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"cannot load database from %s: %w",
-			addr,
-			err,
-		)
+		return nil, fmt.Errorf("cannot load database from %q: %w", addr, err)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -72,11 +56,7 @@ func NewSource(
 
 	err = sqlx.IsDatabaseConnected(ctx, db)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"cannot connect database on %s: %w",
-			addr,
-			err,
-		)
+		return nil, fmt.Errorf("cannot connect database on %q: %w", addr, err)
 	}
 
 	for i := range opts {
@@ -113,10 +93,7 @@ func (s srcFile) Pipe(ctx context.Context, dst Destination) error {
 			if j := bytes.IndexByte(d, '\n'); j >= 0 {
 				if (j == 1 && d[j-1] == ';') ||
 					(j > 1 && (d[j-1] == ';' || d[j-2] == ';')) {
-					return i + j + 1, bytes.TrimLeft(
-						bytes.TrimRight(data[0:i+j], ";\r"),
-						"\n",
-					), nil
+					return i + j + 1, bytes.TrimLeft(bytes.TrimRight(data[0:i+j], "\r"), "\r\n"), nil
 				}
 
 				if j+1 >= len(d) {
@@ -124,16 +101,15 @@ func (s srcFile) Pipe(ctx context.Context, dst Destination) error {
 				}
 				d = d[j+1:]
 				i += j + 1
+
+				continue
 			}
+
+			break
 		}
 
 		if eof {
-			return len(
-					data,
-				), bytes.TrimLeft(
-					bytes.TrimRight(data, ";\r"),
-					"\n",
-				), nil
+			return len(data), bytes.TrimLeft(bytes.TrimRight(data, "\r"), "\r\n"), nil
 		}
 
 		return 0, nil, nil
@@ -147,7 +123,11 @@ func (s srcFile) Pipe(ctx context.Context, dst Destination) error {
 
 		err := dst.Exec(ctx, q)
 		if err != nil {
-			return fmt.Errorf("cannot execute %q: %w", q, err)
+			if !isEmptyQueryError(err) {
+				return fmt.Errorf("cannot execute %q: %w", q, err)
+			}
+
+			continue
 		}
 
 		tflog.Debug(ctx, "Executed", map[string]any{"query": q})
@@ -165,9 +145,18 @@ func (s srcDatabase) Close() error {
 	return s.db.Close()
 }
 
-func (s srcDatabase) Pipe(
-	ctx context.Context,
-	dst Destination,
-) error {
+func (s srcDatabase) Pipe(ctx context.Context, dst Destination) error {
 	return nil
+}
+
+func isEmptyQueryError(err error) bool {
+	for _, s := range []string{
+		"Error 1065", // MySQL (Query was empty).
+	} {
+		if strings.Contains(err.Error(), s) {
+			return true
+		}
+	}
+
+	return false
 }
