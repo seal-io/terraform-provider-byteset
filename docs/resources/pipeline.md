@@ -46,11 +46,11 @@ Required:
 
   - Database address format:
 	  - mysql://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
-	  - maria://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
-	  - postgres://[username:[password]@][address][:port][/dbname][?param1=value1&...]
+	  - maria|mariadb://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
+	  - postgres|postgresql://[username:[password]@][address][:port][/dbname][?param1=value1&...]
 	  - sqlite:///path/to/filename.db[?param1=value1&...]
 	  - oracle://[username:[password]@][address][:port][/service][?param1=value1&...]
-	  - mssql://[username:[password]@][address][:port][/instance][?database=dbname&param1=value1&...]
+	  - mssql|sqlserver://[username:[password]@][address][:port][/instance][?database=dbname&param1=value1&...]
 
 Optional:
 
@@ -76,11 +76,11 @@ choose from local/remote SQL file or database.
 
   - Database address format:
 	  - mysql://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
-	  - maria://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
-	  - postgres://[username:[password]@][address][:port][/dbname][?param1=value1&...]
+	  - maria|mariadb://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
+	  - postgres|postgresql://[username:[password]@][address][:port][/dbname][?param1=value1&...]
 	  - sqlite:///path/to/filename.db[?param1=value1&...]
 	  - oracle://[username:[password]@][address][:port][/service][?param1=value1&...]
-	  - mssql://[username:[password]@][address][:port][/instance][?database=dbname&param1=value1&...]
+	  - mssql|sqlserver://[username:[password]@][address][:port][/instance][?database=dbname&param1=value1&...]
 
 Optional:
 

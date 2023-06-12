@@ -18,6 +18,15 @@ import (
 	_ "modernc.org/sqlite"               // Db = sqlite.
 )
 
+const (
+	MySQLDialect     = "mysql"
+	MariaDBDialect   = MySQLDialect
+	PostgresDialect  = "postgres"
+	SQLiteDialect    = "sqlite"
+	OracleDialect    = "oracle"
+	SQLServerDialect = "mssql"
+)
+
 func ParseAddress(addr string) (drv, dsn string, err error) {
 	if addr == "" {
 		err = errors.New("blank data source address")
@@ -26,22 +35,31 @@ func ParseAddress(addr string) (drv, dsn string, err error) {
 
 	switch {
 	case strings.HasPrefix(addr, "mysql://"):
-		drv = "mysql"
+		drv = MySQLDialect
 		dsn = strings.TrimPrefix(addr, "mysql://")
 	case strings.HasPrefix(addr, "maria://"):
-		drv = "mysql"
+		drv = MariaDBDialect
 		dsn = strings.TrimPrefix(addr, "maria://")
+	case strings.HasPrefix(addr, "mariadb://"):
+		drv = MariaDBDialect
+		dsn = strings.TrimPrefix(addr, "mariadb://")
 	case strings.HasPrefix(addr, "postgres://"):
-		drv = "postgres"
+		drv = PostgresDialect
 		dsn = addr
+	case strings.HasPrefix(addr, "postgresql://"):
+		drv = PostgresDialect
+		dsn = "postgres://" + strings.TrimPrefix(addr, "postgresql://")
 	case strings.HasPrefix(addr, "sqlite://"):
-		drv = "sqlite"
+		drv = SQLiteDialect
 		dsn = "file:" + strings.TrimPrefix(addr, "sqlite://")
 	case strings.HasPrefix(addr, "oracle://"):
-		drv = "oracle"
+		drv = OracleDialect
+		dsn = addr
+	case strings.HasPrefix(addr, "sqlserver://"):
+		drv = SQLServerDialect
 		dsn = addr
 	case strings.HasPrefix(addr, "mssql://"):
-		drv = "mssql"
+		drv = SQLServerDialect
 		dsn = "sqlserver://" + strings.TrimPrefix(addr, "mssql://")
 	}
 

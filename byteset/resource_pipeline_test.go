@@ -164,13 +164,13 @@ func TestAccResourcePipeline_file_to_postgres(t *testing.T) {
 		resourceName = "byteset_pipeline.test"
 
 		basicSrc = fmt.Sprintf("file://%s/postgres.sql", testdataPath)
-		basicDst = fmt.Sprintf("postgres://root:%s@127.0.0.1:5432/%s?sslmode=disable", password, database)
+		basicDst = fmt.Sprintf("postgresql://root:%s@127.0.0.1:5432/%s?sslmode=disable", password, database)
 
 		fkSrc = fmt.Sprintf("file://%s/postgres-fk.sql", testdataPath)
 		fkDst = fmt.Sprintf("postgres://root:%s@127.0.0.1/%s?sslmode=disable", password, database)
 
 		largeSrc = "https://raw.githubusercontent.com/seal-io/terraform-provider-byteset/main/byteset/testdata/postgres-lg.sql"
-		largeDst = fmt.Sprintf("postgres://root:%s@127.0.0.1/%s?sslmode=disable", password, database)
+		largeDst = fmt.Sprintf("postgresql://root:%s@127.0.0.1/%s?sslmode=disable", password, database)
 	)
 
 	resource.Test(t, resource.TestCase{
