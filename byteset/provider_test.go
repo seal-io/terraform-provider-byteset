@@ -4,8 +4,6 @@ import (
 	"context"
 	"html/template"
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -58,15 +56,6 @@ func renderConfigTemplate(ct string, keyValuePairs ...any) string {
 	}
 
 	return s.String()
-}
-
-func testdataPath() string {
-	dir, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-
-	return filepath.Join(dir, "testdata")
 }
 
 type dockerContainer struct {

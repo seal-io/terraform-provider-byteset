@@ -21,8 +21,6 @@ CREATE TABLE members
 );
 
 -- members data
-;;
-;;
 INSERT INTO members (id, last_name, first_name, team_id)
 VALUES (1, 'Lucy', 'Li', 1);
 INSERT INTO members (id, last_name, first_name, team_id)
@@ -33,8 +31,6 @@ INSERT INTO members (id, last_name, first_name, team_id)
 VALUES (4, 'Frank', NULL, 2);
 
 -- teams data
-;;
-;;
 INSERT INTO teams (id, name)
 VALUES (1, 'Finance');
 INSERT INTO teams (id, name)

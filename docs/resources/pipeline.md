@@ -54,9 +54,10 @@ Required:
 
 Optional:
 
-- `conn_max_idle` (Number) The maximum idling connections of destination database.
-- `conn_max_life` (Number) The maximum lifetime in seconds of destination database.
-- `conn_max_open` (Number) The maximum opening connectors of destination database.
+- `conn_max_idle` (Number) The maximum idling connections of destination database, 
+if the given SQL file is using single transaction, should turn down the "conn_max_idle" to 1.
+- `conn_max_open` (Number) The maximum opening connectors of destination database, 
+if the given SQL file is using single transaction, should turn down the "conn_max_open" to 1.
 - `salt` (String) The salt assist calculating the destination database has changed 
 but the address not, like the database Terraform Managed Resource ID.
 

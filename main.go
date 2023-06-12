@@ -1,13 +1,13 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"log"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 
 	"github.com/seal-io/terraform-provider-byteset/byteset"
+	"github.com/seal-io/terraform-provider-byteset/utils/signalx"
 )
 
 func main() {
@@ -22,7 +22,7 @@ func main() {
 	flag.Parse()
 
 	err := providerserver.Serve(
-		context.Background(),
+		signalx.Context(),
 		byteset.NewProvider,
 		providerserver.ServeOpts{
 			Address: byteset.ProviderAddress,

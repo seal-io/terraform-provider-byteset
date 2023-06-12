@@ -5,10 +5,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
@@ -41,7 +43,6 @@ type ResourcePipelineDestination struct {
 	Address     types.String `tfsdk:"address"`
 	ConnMaxOpen types.Int64  `tfsdk:"conn_max_open"`
 	ConnMaxIdle types.Int64  `tfsdk:"conn_max_idle"`
-	ConnMaxLife types.Int64  `tfsdk:"conn_max_life"`
 	Salt        types.String `tfsdk:"salt"`
 }
 
@@ -51,9 +52,6 @@ func (r ResourcePipelineDestination) Reflect(ctx context.Context) (pipeline.Dest
 		r.Address.ValueString(),
 		pipeline.WithConnMaxOpen(int(r.ConnMaxOpen.ValueInt64())),
 		pipeline.WithConnMaxIdle(int(r.ConnMaxIdle.ValueInt64())),
-		pipeline.WithConnMaxLife(
-			time.Duration(r.ConnMaxLife.ValueInt64())*time.Second,
-		),
 	)
 }
 
@@ -118,21 +116,27 @@ choose from local/remote SQL file or database.
 					"conn_max_open": schema.Int64Attribute{
 						Optional:    true,
 						Computed:    true,
-						Default:     int64default.StaticInt64(15),
+						Default:     int64default.StaticInt64(5),
 						Description: `The maximum opening connectors of source database.`,
+						Validators: []validator.Int64{
+							int64validator.AtLeast(1),
+						},
 					},
 					"conn_max_idle": schema.Int64Attribute{
 						Optional:    true,
 						Computed:    true,
 						Default:     int64default.StaticInt64(5),
 						Description: `The maximum idling connections of source database.`,
+						Validators: []validator.Int64{
+							int64validator.AtLeast(1),
+							int64validator.AtMostSumOf(
+								path.MatchRelative().AtParent().AtName("conn_max_open")),
+						},
 					},
 					"conn_max_life": schema.Int64Attribute{
-						Optional: true,
-						Computed: true,
-						Default: int64default.StaticInt64(
-							5 * 60,
-						),
+						Optional:    true,
+						Computed:    true,
+						Default:     int64default.StaticInt64(5 * 60),
 						Description: `The maximum lifetime in seconds of source database.`,
 					},
 				},
@@ -153,24 +157,28 @@ choose from local/remote SQL file or database.
 	  - mssql://[username:[password]@][address][:port][/instance][?database=dbname&param1=value1&...]`,
 					},
 					"conn_max_open": schema.Int64Attribute{
-						Optional:    true,
-						Computed:    true,
-						Default:     int64default.StaticInt64(15),
-						Description: `The maximum opening connectors of destination database.`,
-					},
-					"conn_max_idle": schema.Int64Attribute{
-						Optional:    true,
-						Computed:    true,
-						Default:     int64default.StaticInt64(5),
-						Description: `The maximum idling connections of destination database.`,
-					},
-					"conn_max_life": schema.Int64Attribute{
 						Optional: true,
 						Computed: true,
-						Default: int64default.StaticInt64(
-							5 * 60,
-						),
-						Description: `The maximum lifetime in seconds of destination database.`,
+						Default:  int64default.StaticInt64(5),
+						Description: `The maximum opening connectors of destination database, 
+if the given SQL file is using single transaction, should turn down the "conn_max_open" to 1. 
+`,
+						Validators: []validator.Int64{
+							int64validator.AtLeast(1),
+						},
+					},
+					"conn_max_idle": schema.Int64Attribute{
+						Optional: true,
+						Computed: true,
+						Default:  int64default.StaticInt64(5),
+						Description: `The maximum idling connections of destination database, 
+if the given SQL file is using single transaction, should turn down the "conn_max_idle" to 1.
+`,
+						Validators: []validator.Int64{
+							int64validator.AtLeast(1),
+							int64validator.AtMostSumOf(
+								path.MatchRelative().AtParent().AtName("conn_max_open")),
+						},
 					},
 					"salt": schema.StringAttribute{
 						Optional: true,

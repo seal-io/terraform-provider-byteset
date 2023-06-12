@@ -11,8 +11,6 @@ CREATE TABLE company
 
 
 -- company data
-;;
-;;
 INSERT INTO company (name, age, address, salary)
 VALUES ('Paul', 32, 'California', 20000.00);
 INSERT INTO company (name, age, address, salary)

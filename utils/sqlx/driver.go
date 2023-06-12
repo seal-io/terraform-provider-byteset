@@ -57,7 +57,13 @@ func LoadDatabase(addr string) (drv string, db *sql.DB, err error) {
 	if err != nil {
 		return
 	}
+
 	db, err = sql.Open(drv, dsn)
+	if err != nil {
+		return
+	}
+
+	db.SetConnMaxIdleTime(0)
 
 	return
 }

@@ -8,17 +8,20 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
 	"github.com/seal-io/terraform-provider-byteset/utils/strx"
+	"github.com/seal-io/terraform-provider-byteset/utils/testx"
 )
 
-func TestAccResourcePipeline_sqlite(t *testing.T) {
+func TestAccResourcePipeline_file_to_sqlite(t *testing.T) {
 	// Test pipeline.
 	var (
+		testdataPath = testx.AbsolutePath("testdata")
+
 		resourceName = "byteset_pipeline.test"
 
-		basicSrc = fmt.Sprintf("file://%s/sqlite.sql", testdataPath())
+		basicSrc = fmt.Sprintf("file://%s/sqlite.sql", testdataPath)
 		basicDst = "sqlite:///tmp/sqlite.db"
 
-		fkSrc = fmt.Sprintf("file://%s/sqlite-fk.sql", testdataPath())
+		fkSrc = fmt.Sprintf("file://%s/sqlite-fk.sql", testdataPath)
 		fkDst = "sqlite:///tmp/sqlite.db?_pragma=foreign_keys(1)"
 	)
 
@@ -28,28 +31,29 @@ func TestAccResourcePipeline_sqlite(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Basic.
 			{
-				Config: testConfig(basicSrc, basicDst),
+				Config: testConfigOfSourceFile(basicSrc, basicDst, 1, 1),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "source.address", basicSrc),
 					resource.TestCheckResourceAttr(resourceName, "destination.address", basicDst),
-					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_open", "15"),
-					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_idle", "5"),
-					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_life", "300"),
+					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_open", "1"),
+					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_idle", "1"),
 				),
 			},
 			// Foreign Key.
 			{
-				Config: testConfig(fkSrc, fkDst),
+				Config: testConfigOfSourceFile(fkSrc, fkDst, 1, 1),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "source.address", fkSrc),
 					resource.TestCheckResourceAttr(resourceName, "destination.address", fkDst),
+					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_open", "1"),
+					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_idle", "1"),
 				),
 			},
 		},
 	})
 }
 
-func TestAccResourcePipeline_mysql(t *testing.T) {
+func TestAccResourcePipeline_file_to_mysql(t *testing.T) {
 	// Start Database.
 	var (
 		database = "byteset"
@@ -78,12 +82,13 @@ func TestAccResourcePipeline_mysql(t *testing.T) {
 
 	// Test pipeline.
 	var (
+		testdataPath = testx.AbsolutePath("testdata")
 		resourceName = "byteset_pipeline.test"
 
-		basicSrc = fmt.Sprintf("file://%s/mysql.sql", testdataPath())
+		basicSrc = fmt.Sprintf("file://%s/mysql.sql", testdataPath)
 		basicDst = fmt.Sprintf("mysql://root:%s@tcp(127.0.0.1:3306)/%s", password, database)
 
-		fkSrc = fmt.Sprintf("file://%s/mysql-fk.sql", testdataPath())
+		fkSrc = fmt.Sprintf("file://%s/mysql-fk.sql", testdataPath)
 		fkDst = fmt.Sprintf("mysql://root:%s@tcp(127.0.0.1)/%s", password, database)
 
 		largeSrc = "https://raw.githubusercontent.com/seal-io/terraform-provider-byteset/main/byteset/testdata/mysql-lg.sql"
@@ -95,31 +100,37 @@ func TestAccResourcePipeline_mysql(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testConfig(basicSrc, basicDst),
+				Config: testConfigOfSourceFile(basicSrc, basicDst, 5, 5),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "source.address", basicSrc),
 					resource.TestCheckResourceAttr(resourceName, "destination.address", basicDst),
+					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_open", "5"),
+					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_idle", "5"),
 				),
 			},
 			{
-				Config: testConfig(fkSrc, fkDst),
+				Config: testConfigOfSourceFile(fkSrc, fkDst, 5, 5),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "source.address", fkSrc),
 					resource.TestCheckResourceAttr(resourceName, "destination.address", fkDst),
+					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_open", "5"),
+					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_idle", "5"),
 				),
 			},
 			{
-				Config: testConfig(largeSrc, largeDst),
+				Config: testConfigOfSourceFile(largeSrc, largeDst, 5, 5),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "source.address", largeSrc),
 					resource.TestCheckResourceAttr(resourceName, "destination.address", largeDst),
+					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_open", "5"),
+					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_idle", "5"),
 				),
 			},
 		},
 	})
 }
 
-func TestAccResourcePipeline_postgres(t *testing.T) {
+func TestAccResourcePipeline_file_to_postgres(t *testing.T) {
 	// Start Database.
 	var (
 		database = "byteset"
@@ -149,12 +160,13 @@ func TestAccResourcePipeline_postgres(t *testing.T) {
 
 	// Test pipeline.
 	var (
+		testdataPath = testx.AbsolutePath("testdata")
 		resourceName = "byteset_pipeline.test"
 
-		basicSrc = fmt.Sprintf("file://%s/postgres.sql", testdataPath())
+		basicSrc = fmt.Sprintf("file://%s/postgres.sql", testdataPath)
 		basicDst = fmt.Sprintf("postgres://root:%s@127.0.0.1:5432/%s?sslmode=disable", password, database)
 
-		fkSrc = fmt.Sprintf("file://%s/postgres-fk.sql", testdataPath())
+		fkSrc = fmt.Sprintf("file://%s/postgres-fk.sql", testdataPath)
 		fkDst = fmt.Sprintf("postgres://root:%s@127.0.0.1/%s?sslmode=disable", password, database)
 
 		largeSrc = "https://raw.githubusercontent.com/seal-io/terraform-provider-byteset/main/byteset/testdata/postgres-lg.sql"
@@ -166,31 +178,37 @@ func TestAccResourcePipeline_postgres(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testConfig(basicSrc, basicDst),
+				Config: testConfigOfSourceFile(basicSrc, basicDst, 5, 5),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "source.address", basicSrc),
 					resource.TestCheckResourceAttr(resourceName, "destination.address", basicDst),
+					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_open", "5"),
+					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_idle", "5"),
 				),
 			},
 			{
-				Config: testConfig(fkSrc, fkDst),
+				Config: testConfigOfSourceFile(fkSrc, fkDst, 5, 5),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "source.address", fkSrc),
 					resource.TestCheckResourceAttr(resourceName, "destination.address", fkDst),
+					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_open", "5"),
+					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_idle", "5"),
 				),
 			},
 			{
-				Config: testConfig(largeSrc, largeDst),
+				Config: testConfigOfSourceFile(largeSrc, largeDst, 5, 5),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "source.address", largeSrc),
 					resource.TestCheckResourceAttr(resourceName, "destination.address", largeDst),
+					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_open", "5"),
+					resource.TestCheckResourceAttr(resourceName, "destination.conn_max_idle", "5"),
 				),
 			},
 		},
 	})
 }
 
-func testConfig(src, dst string) string {
+func testConfigOfSourceFile(src, dst string, dstMaxOpen, dstMaxIdle int) string {
 	const tmpl = `
 resource "byteset_pipeline" "test" {
   source = {
@@ -198,8 +216,14 @@ resource "byteset_pipeline" "test" {
   }
   destination = {
     address = "{{ .Dst }}"
+    conn_max_open = {{ .DstMaxOpen }}
+    conn_max_idle = {{ .DstMaxIdle }}
   }
 }`
 
-	return renderConfigTemplate(tmpl, "Src", src, "Dst", dst)
+	return renderConfigTemplate(tmpl,
+		"Src", src,
+		"Dst", dst,
+		"DstMaxOpen", dstMaxOpen,
+		"DstMaxIdle", dstMaxIdle)
 }

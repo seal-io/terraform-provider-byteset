@@ -10,7 +10,7 @@ type Option func(db *sql.DB)
 func WithConnMaxOpen(o int) Option {
 	return func(db *sql.DB) {
 		if o <= 0 {
-			return
+			o = 5
 		}
 
 		db.SetMaxOpenConns(o)
@@ -19,6 +19,10 @@ func WithConnMaxOpen(o int) Option {
 
 func WithConnMaxIdle(i int) Option {
 	return func(db *sql.DB) {
+		if i <= 0 {
+			i = 5
+		}
+
 		db.SetMaxIdleConns(i)
 	}
 }
