@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -98,6 +100,9 @@ func (r ResourcePipeline) Schema(ctx context.Context, req resource.SchemaRequest
 				Attributes: map[string]schema.Attribute{
 					"address": schema.StringAttribute{
 						Required: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.RequiresReplace(),
+						},
 						Description: `The address of source, which to provide the dataset, 
 choose from local/remote SQL file or database.
 
@@ -146,6 +151,9 @@ choose from local/remote SQL file or database.
 				Attributes: map[string]schema.Attribute{
 					"address": schema.StringAttribute{
 						Required: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.RequiresReplace(),
+						},
 						Description: `The address of destination database, which to receive the dataset.
 
   - Database address format:
@@ -182,6 +190,9 @@ if the given SQL file is using single transaction, should turn down the "conn_ma
 					},
 					"salt": schema.StringAttribute{
 						Optional: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.RequiresReplace(),
+						},
 						Description: `The salt assist calculating the destination database has changed 
 but the address not, like the database Terraform Managed Resource ID.`,
 					},
