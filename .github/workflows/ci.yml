@@ -40,7 +40,7 @@ jobs:
         uses: fkirc/skip-duplicate-actions@v5
         with:
           github_token: "${{ github.token }}"
-          paths_ignore: '["**.md", "**.mdx", "**.png", "**.jpg"]'
+          paths_ignore: '["**.tmpl", "**.md", "**.mdx", "**.png", "**.jpg"]'
           do_not_skip: '["workflow_dispatch", "push"]'
         continue-on-error: true
 

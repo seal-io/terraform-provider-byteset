@@ -13,6 +13,13 @@ The ByteSet provider for Terraform is a plugin that seed your database for Devel
 - Seed your development database with real data.
 - Warm up your testing dataset.
 
+### Features
+
+- [x] Seed from a SQL DML/DDL file dumped by the same kind of database.
+- [ ] Seed from the same kind of database.
+- [ ] Seed from different kinds of database.
+- [ ] Replace sensitive value with fake data.
+
 ## Example Usage
 
 ### SQLite
