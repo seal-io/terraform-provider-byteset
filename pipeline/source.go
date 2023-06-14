@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"github.com/seal-io/terraform-provider-byteset/utils/sqlx"
+	"github.com/seal-io/terraform-provider-byteset/utils/strx"
 )
 
 type Source interface {
@@ -41,6 +42,18 @@ func NewSource(ctx context.Context, addr string, opts ...Option) (Source, error)
 		}
 
 		return &srcFile{f: remote.Body}, nil
+
+	case strings.HasPrefix(addr, "raw://"):
+		raw := addr[len("raw://"):]
+		return &srcFile{f: io.NopCloser(strings.NewReader(raw))}, nil
+
+	case strings.HasPrefix(addr, "raw+base64://"):
+		raw, err := strx.DecodeBase64(addr[len("raw+base64://"):])
+		if err != nil {
+			return nil, fmt.Errorf("cannot decode raw base64 content: %w", err)
+		}
+
+		return &srcFile{f: io.NopCloser(strings.NewReader(raw))}, nil
 
 	default:
 	}
@@ -91,7 +104,7 @@ func (in *srcFile) Pipe(ctx context.Context, dst Destination) error {
 			return err
 		}
 
-		tflog.Debug(ctx, "Executed", map[string]any{"statement": s})
+		tflog.Debug(ctx, "Executed", map[string]any{"query": s})
 	}
 
 	return nil

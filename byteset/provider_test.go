@@ -2,10 +2,10 @@ package byteset
 
 import (
 	"context"
-	"html/template"
 	"io"
 	"strings"
 	"testing"
+	"text/template"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"

@@ -3,7 +3,6 @@ package byteset
 import (
 	"context"
 	"strings"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -23,37 +22,29 @@ import (
 var _ resource.Resource = (*ResourcePipeline)(nil)
 
 type ResourcePipelineSource struct {
-	Address     types.String `tfsdk:"address"`
-	ConnMaxOpen types.Int64  `tfsdk:"conn_max_open"`
-	ConnMaxIdle types.Int64  `tfsdk:"conn_max_idle"`
-	ConnMaxLife types.Int64  `tfsdk:"conn_max_life"`
+	Address types.String `tfsdk:"address"`
+	ConnMax types.Int64  `tfsdk:"conn_max"`
 }
 
 func (r ResourcePipelineSource) Reflect(ctx context.Context) (pipeline.Source, error) {
 	return pipeline.NewSource(
 		ctx,
 		r.Address.ValueString(),
-		pipeline.WithConnMaxOpen(int(r.ConnMaxOpen.ValueInt64())),
-		pipeline.WithConnMaxIdle(int(r.ConnMaxIdle.ValueInt64())),
-		pipeline.WithConnMaxLife(
-			time.Duration(r.ConnMaxLife.ValueInt64())*time.Second,
-		),
+		pipeline.WithConnMax(int(r.ConnMax.ValueInt64())),
 	)
 }
 
 type ResourcePipelineDestination struct {
-	Address     types.String `tfsdk:"address"`
-	ConnMaxOpen types.Int64  `tfsdk:"conn_max_open"`
-	ConnMaxIdle types.Int64  `tfsdk:"conn_max_idle"`
-	Salt        types.String `tfsdk:"salt"`
+	Address types.String `tfsdk:"address"`
+	ConnMax types.Int64  `tfsdk:"conn_max"`
+	Salt    types.String `tfsdk:"salt"`
 }
 
 func (r ResourcePipelineDestination) Reflect(ctx context.Context) (pipeline.Destination, error) {
 	return pipeline.NewDestination(
 		ctx,
 		r.Address.ValueString(),
-		pipeline.WithConnMaxOpen(int(r.ConnMaxOpen.ValueInt64())),
-		pipeline.WithConnMaxIdle(int(r.ConnMaxIdle.ValueInt64())),
+		pipeline.WithConnMax(int(r.ConnMax.ValueInt64())),
 	)
 }
 
@@ -109,40 +100,24 @@ choose from local/remote SQL file or database.
   - Local/Remote SQL file format:
 	  - file:///path/to/filename
 	  - http(s)://...
+	  - raw://...
+	  - raw+base64://...
 
   - Database address format:
 	  - mysql://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
 	  - maria|mariadb://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
 	  - postgres|postgresql://[username:[password]@][address][:port][/dbname][?param1=value1&...]
-	  - sqlite:///path/to/filename.db[?param1=value1&...]
 	  - oracle://[username:[password]@][address][:port][/service][?param1=value1&...]
 	  - mssql|sqlserver://[username:[password]@][address][:port][/instance][?database=dbname&param1=value1&...]`,
 					},
-					"conn_max_open": schema.Int64Attribute{
+					"conn_max": schema.Int64Attribute{
 						Optional:    true,
 						Computed:    true,
-						Default:     int64default.StaticInt64(5),
-						Description: `The maximum opening connectors of source database.`,
+						Default:     int64default.StaticInt64(25),
+						Description: `The maximum connections of source database.`,
 						Validators: []validator.Int64{
 							int64validator.AtLeast(1),
 						},
-					},
-					"conn_max_idle": schema.Int64Attribute{
-						Optional:    true,
-						Computed:    true,
-						Default:     int64default.StaticInt64(5),
-						Description: `The maximum idling connections of source database.`,
-						Validators: []validator.Int64{
-							int64validator.AtLeast(1),
-							int64validator.AtMostSumOf(
-								path.MatchRelative().AtParent().AtName("conn_max_open")),
-						},
-					},
-					"conn_max_life": schema.Int64Attribute{
-						Optional:    true,
-						Computed:    true,
-						Default:     int64default.StaticInt64(5 * 60),
-						Description: `The maximum lifetime in seconds of source database.`,
 					},
 				},
 			},
@@ -160,32 +135,16 @@ choose from local/remote SQL file or database.
 	  - mysql://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
 	  - maria|mariadb://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
 	  - postgres|postgresql://[username:[password]@][address][:port][/dbname][?param1=value1&...]
-	  - sqlite:///path/to/filename.db[?param1=value1&...]
 	  - oracle://[username:[password]@][address][:port][/service][?param1=value1&...]
 	  - mssql|sqlserver://[username:[password]@][address][:port][/instance][?database=dbname&param1=value1&...]`,
 					},
-					"conn_max_open": schema.Int64Attribute{
-						Optional: true,
-						Computed: true,
-						Default:  int64default.StaticInt64(5),
-						Description: `The maximum opening connectors of destination database, 
-if the given SQL file is using single transaction, should turn down the "conn_max_open" to 1. 
-`,
+					"conn_max": schema.Int64Attribute{
+						Optional:    true,
+						Computed:    true,
+						Default:     int64default.StaticInt64(25),
+						Description: `The maximum opening connectors of destination database.`,
 						Validators: []validator.Int64{
 							int64validator.AtLeast(1),
-						},
-					},
-					"conn_max_idle": schema.Int64Attribute{
-						Optional: true,
-						Computed: true,
-						Default:  int64default.StaticInt64(5),
-						Description: `The maximum idling connections of destination database, 
-if the given SQL file is using single transaction, should turn down the "conn_max_idle" to 1.
-`,
-						Validators: []validator.Int64{
-							int64validator.AtLeast(1),
-							int64validator.AtMostSumOf(
-								path.MatchRelative().AtParent().AtName("conn_max_open")),
 						},
 					},
 					"salt": schema.StringAttribute{

@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/golang-sql/sqlexp"
 	"github.com/sourcegraph/conc/pool"
 
 	"github.com/seal-io/terraform-provider-byteset/utils/sqlx"
@@ -15,9 +16,9 @@ import (
 type Destination interface {
 	io.Closer
 
-	// Exec executes the given statement with arguments,
-	// detects the given statement and pick the proper execution(sync/async) to finish the job.
-	Exec(ctx context.Context, statement string, args ...any) error
+	// Exec executes the given query,
+	// detects the given query and pick the proper execution(sync/async) to finish the job.
+	Exec(ctx context.Context, query string) error
 }
 
 func NewDestination(ctx context.Context, addr string, opts ...Option) (Destination, error) {
@@ -27,7 +28,6 @@ func NewDestination(ctx context.Context, addr string, opts ...Option) (Destinati
 	}
 
 	// Configure.
-	opts = append(opts, WithConnMaxLife(0))
 	for i := range opts {
 		if opts[i] == nil {
 			continue
@@ -45,7 +45,9 @@ func NewDestination(ctx context.Context, addr string, opts ...Option) (Destinati
 		return nil, fmt.Errorf("cannot connect database on %q: %w", addr, err)
 	}
 
-	return &dst{drv: drv, db: db, dbStats: db.Stats()}, nil
+	dbStats := db.Stats()
+
+	return &dst{drv: drv, db: db, dbStats: dbStats}, nil
 }
 
 type dst struct {
@@ -60,33 +62,26 @@ func (in *dst) Close() error {
 	return in.db.Close()
 }
 
-func (in *dst) Exec(ctx context.Context, statement string, args ...any) (err error) {
+func (in *dst) Exec(ctx context.Context, query string) (err error) {
 	if in.dbStats.MaxOpenConnections == 1 {
-		err = in.exec(ctx, statement, args...)
+		err = in.execSync(ctx, query)
 	} else {
-		err = in.execAsync(ctx, statement, args...)
+		err = in.execAsync(ctx, query)
 	}
 
 	if err != nil {
-		return fmt.Errorf("cannot execute %q: %w", statement, err)
+		return fmt.Errorf("cannot execute %q: %w", query, err)
 	}
 
 	return
 }
 
-func (in *dst) exec(ctx context.Context, statement string, args ...any) (err error) {
-	_, err = in.db.ExecContext(ctx, statement, args...)
-	if err != nil {
-		if sqlx.IsEmptyError(err) {
-			err = nil
-		}
-	}
-
-	return
+func (in *dst) execSync(ctx context.Context, query string) error {
+	return exec(ctx, in.db, query)
 }
 
-func (in *dst) execAsync(ctx context.Context, statement string, args ...any) error {
-	if sqlx.IsDCL(statement) {
+func (in *dst) execAsync(ctx context.Context, query string) error {
+	if sqlx.IsDCL(query) {
 		if in.gp != nil {
 			// Wait for all previous DDL finishing.
 			if err := in.gp.Wait(); err != nil {
@@ -100,11 +95,12 @@ func (in *dst) execAsync(ctx context.Context, statement string, args ...any) err
 		in.db.SetMaxOpenConns(1)
 		in.dbStats = in.db.Stats()
 
-		return in.exec(ctx, statement, args...)
+		// Execute DCL in any one connection.
+		return exec(ctx, in.db, query)
 	}
 
-	if sqlx.IsDML(statement) {
-		// Execute DML in async mode.
+	if sqlx.IsDML(query) {
+		// Create a go pool if not existed.
 		if in.gp == nil {
 			in.gp = pool.New().
 				WithMaxGoroutines(in.dbStats.MaxOpenConnections).
@@ -112,8 +108,9 @@ func (in *dst) execAsync(ctx context.Context, statement string, args ...any) err
 				WithFirstError()
 		}
 
+		// Execute DML in async.
 		in.gp.Go(func(ctx context.Context) error {
-			return in.exec(ctx, statement, args...)
+			return exec(ctx, in.db, query)
 		})
 
 		return nil
@@ -127,9 +124,9 @@ func (in *dst) execAsync(ctx context.Context, statement string, args ...any) err
 		in.gp = nil
 	}
 
-	if sqlx.IsDDL(statement) {
-		// Execute DDL in one connection.
-		return in.exec(ctx, statement, args...)
+	if sqlx.IsDDL(query) {
+		// Execute DDL in any one connection.
+		return exec(ctx, in.db, query)
 	}
 
 	// Execute DCL for all connections.
@@ -148,15 +145,22 @@ func (in *dst) execAsync(ctx context.Context, statement string, args ...any) err
 
 		cs = append(cs, c)
 
-		_, err = c.ExecContext(ctx, statement, args...)
+		err = exec(ctx, c, query)
 		if err != nil {
-			if sqlx.IsEmptyError(err) {
-				continue
-			}
-
 			return err
 		}
 	}
 
 	return nil
+}
+
+func exec(ctx context.Context, db sqlexp.Querier, query string) error {
+	_, err := db.ExecContext(ctx, query)
+	if err != nil {
+		if sqlx.IsEmptyError(err) {
+			err = nil
+		}
+	}
+
+	return err
 }

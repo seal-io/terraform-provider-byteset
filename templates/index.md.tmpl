@@ -15,16 +15,34 @@ The ByteSet provider for Terraform is a plugin that seed your database for Devel
 
 ### Features
 
-- [x] Seed from a SQL DML/DDL file dumped by the same kind of database.
+- [x] Seed from a SQL DML/DDL file or content dumped by the same kind of database.
 - [ ] Seed from the same kind of database.
 - [ ] Seed from different kinds of database.
 - [ ] Replace sensitive value with fake data.
 
 ## Example Usage
 
-### SQLite
+```terraform
+terraform {
+  required_providers {
+    byteset = {
+      source = "seal-io/byteset"
+    }
+  }
+}
 
-{{tffile "examples/sqlite/main.tf"}}
+provider "byteset" {}
+
+resource "byteset_pipeline" "example" {
+  source = {
+    address = "..."
+  }
+
+  destination = {
+    address = "..."
+  }
+}
+```
 
 ### AWS RDS
 

@@ -15,14 +15,12 @@ The ByteSet provider for Terraform is a plugin that seed your database for Devel
 
 ### Features
 
-- [x] Seed from a SQL DML/DDL file dumped by the same kind of database.
+- [x] Seed from a SQL DML/DDL file or content dumped by the same kind of database.
 - [ ] Seed from the same kind of database.
 - [ ] Seed from different kinds of database.
 - [ ] Replace sensitive value with fake data.
 
 ## Example Usage
-
-### SQLite
 
 ```terraform
 terraform {
@@ -35,17 +33,13 @@ terraform {
 
 provider "byteset" {}
 
-resource "byteset_pipeline" "local_file_to_sqlite" {
-  # Source to indicate the SQLite SQL file.
+resource "byteset_pipeline" "example" {
   source = {
-    address = "file:///path/to/sqlite.sql"
+    address = "..."
   }
 
-  # Destination to load the SQLite SQL file.
   destination = {
-    address       = "sqlite:///path/to/sqlite.db?_pragma=foreign_keys(1)"
-    conn_max_open = 1
-    conn_max_idle = 1
+    address = "..."
   }
 }
 ```

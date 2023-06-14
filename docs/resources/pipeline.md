@@ -48,16 +48,12 @@ Required:
 	  - mysql://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
 	  - maria|mariadb://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
 	  - postgres|postgresql://[username:[password]@][address][:port][/dbname][?param1=value1&...]
-	  - sqlite:///path/to/filename.db[?param1=value1&...]
 	  - oracle://[username:[password]@][address][:port][/service][?param1=value1&...]
 	  - mssql|sqlserver://[username:[password]@][address][:port][/instance][?database=dbname&param1=value1&...]
 
 Optional:
 
-- `conn_max_idle` (Number) The maximum idling connections of destination database, 
-if the given SQL file is using single transaction, should turn down the "conn_max_idle" to 1.
-- `conn_max_open` (Number) The maximum opening connectors of destination database, 
-if the given SQL file is using single transaction, should turn down the "conn_max_open" to 1.
+- `conn_max` (Number) The maximum opening connectors of destination database.
 - `salt` (String) The salt assist calculating the destination database has changed 
 but the address not, like the database Terraform Managed Resource ID.
 
@@ -73,19 +69,18 @@ choose from local/remote SQL file or database.
   - Local/Remote SQL file format:
 	  - file:///path/to/filename
 	  - http(s)://...
+	  - raw://...
+	  - raw+base64://...
 
   - Database address format:
 	  - mysql://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
 	  - maria|mariadb://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
 	  - postgres|postgresql://[username:[password]@][address][:port][/dbname][?param1=value1&...]
-	  - sqlite:///path/to/filename.db[?param1=value1&...]
 	  - oracle://[username:[password]@][address][:port][/service][?param1=value1&...]
 	  - mssql|sqlserver://[username:[password]@][address][:port][/instance][?database=dbname&param1=value1&...]
 
 Optional:
 
-- `conn_max_idle` (Number) The maximum idling connections of source database.
-- `conn_max_life` (Number) The maximum lifetime in seconds of source database.
-- `conn_max_open` (Number) The maximum opening connectors of source database.
+- `conn_max` (Number) The maximum connections of source database.
 
 

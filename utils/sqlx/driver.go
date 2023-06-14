@@ -15,14 +15,12 @@ import (
 	_ "github.com/go-sql-driver/mysql"   // Db = mysql/mariadb.
 	_ "github.com/lib/pq"                // Db = postgres.
 	_ "github.com/sijms/go-ora/v2"       // Db = oracle.
-	_ "modernc.org/sqlite"               // Db = sqlite.
 )
 
 const (
 	MySQLDialect     = "mysql"
 	MariaDBDialect   = MySQLDialect
 	PostgresDialect  = "postgres"
-	SQLiteDialect    = "sqlite"
 	OracleDialect    = "oracle"
 	SQLServerDialect = "mssql"
 )
@@ -49,9 +47,6 @@ func ParseAddress(addr string) (drv, dsn string, err error) {
 	case strings.HasPrefix(addr, "postgresql://"):
 		drv = PostgresDialect
 		dsn = "postgres://" + strings.TrimPrefix(addr, "postgresql://")
-	case strings.HasPrefix(addr, "sqlite://"):
-		drv = SQLiteDialect
-		dsn = "file:" + strings.TrimPrefix(addr, "sqlite://")
 	case strings.HasPrefix(addr, "oracle://"):
 		drv = OracleDialect
 		dsn = addr
@@ -80,8 +75,6 @@ func LoadDatabase(addr string) (drv string, db *sql.DB, err error) {
 	if err != nil {
 		return
 	}
-
-	db.SetConnMaxIdleTime(0)
 
 	return
 }
