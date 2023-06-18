@@ -39,6 +39,7 @@ resource "byteset_pipeline" "example" {
 
 ### Read-Only
 
+- `cost` (String) The time spent on this transfer.
 - `id` (String) The ID of this resource.
 
 <a id="nestedatt--destination"></a>
@@ -61,10 +62,6 @@ Optional:
 - `conn_max` (Number) The maximum opening connectors of destination database.
 - `salt` (String) The salt assist calculating the destination database has changed 
 but the address not, like the database Terraform Managed Resource ID.
-
-Read-Only:
-
-- `cost` (String) The time consumption of this transfer.
 
 
 <a id="nestedatt--source"></a>

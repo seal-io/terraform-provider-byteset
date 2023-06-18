@@ -41,7 +41,6 @@ type ResourcePipelineDestination struct {
 	ConnMax  types.Int64  `tfsdk:"conn_max"`
 	BatchCap types.Int64  `tfsdk:"batch_cap"`
 	Salt     types.String `tfsdk:"salt"`
-	Cost     types.String `tfsdk:"cost"`
 }
 
 func (r ResourcePipelineDestination) Reflect(ctx context.Context) (pipeline.Destination, error) {
@@ -58,6 +57,7 @@ type ResourcePipeline struct {
 	Source      ResourcePipelineSource      `tfsdk:"source"`
 	Destination ResourcePipelineDestination `tfsdk:"destination"`
 	Timeouts    timeouts.Value              `tfsdk:"timeouts"`
+	Cost        types.String                `tfsdk:"cost"`
 }
 
 func (r ResourcePipeline) Corrupted() bool {
@@ -170,16 +170,16 @@ choose from local/remote SQL file or database.
 						Description: `The salt assist calculating the destination database has changed 
 but the address not, like the database Terraform Managed Resource ID.`,
 					},
-					"cost": schema.StringAttribute{
-						Computed:    true,
-						Description: `The time consumption of this transfer.`,
-					},
 				},
 			},
 			"timeouts": timeouts.Attributes(ctx, timeouts.Opts{
 				Create: true,
 				Update: true,
 			}),
+			"cost": schema.StringAttribute{
+				Computed:    true,
+				Description: `The time spent on this transfer.`,
+			},
 		},
 	}
 }
@@ -242,7 +242,7 @@ func (r ResourcePipeline) Create(ctx context.Context, req resource.CreateRequest
 
 		return
 	}
-	plan.Destination.Cost = types.StringValue(time.Since(start).String())
+	plan.Cost = types.StringValue(time.Since(start).String())
 
 	plan.Read(
 		ctx,
