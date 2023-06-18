@@ -3,6 +3,8 @@ run:
   tests: true
   skip-files:
     - "doc.go"
+  skip-dirs:
+    - "staging"
   modules-download-mode: readonly
 
 # output configuration options

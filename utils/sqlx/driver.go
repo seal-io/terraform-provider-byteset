@@ -65,7 +65,7 @@ func ParseAddress(addr string) (drv, dsn string, err error) {
 	return
 }
 
-func LoadDatabase(addr string) (drv string, db *sql.DB, err error) {
+func LoadDatabase(addr string, addrConnMax int) (drv string, db *sql.DB, err error) {
 	drv, dsn, err := ParseAddress(addr)
 	if err != nil {
 		return
@@ -76,11 +76,20 @@ func LoadDatabase(addr string) (drv string, db *sql.DB, err error) {
 		return
 	}
 
+	if addrConnMax <= 0 {
+		addrConnMax = 25
+	}
+
+	db.SetConnMaxIdleTime(0)
+	db.SetConnMaxLifetime(0)
+	db.SetMaxOpenConns(addrConnMax)
+	db.SetMaxIdleConns(addrConnMax)
+
 	return
 }
 
 func IsDatabaseConnected(ctx context.Context, db *sql.DB) (perr error) {
-	err := wait.PollImmediateUntil(2*time.Second,
+	err := wait.PollImmediateUntil(5*time.Second,
 		func() (bool, error) {
 			perr = db.PingContext(ctx)
 			if perr != nil {

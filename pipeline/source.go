@@ -3,15 +3,13 @@ package pipeline
 import (
 	"bufio"
 	"context"
-	"database/sql"
+	stdsql "database/sql"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"strings"
 	"time"
-
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"github.com/seal-io/terraform-provider-byteset/utils/sqlx"
 	"github.com/seal-io/terraform-provider-byteset/utils/strx"
@@ -23,7 +21,7 @@ type Source interface {
 	Pipe(ctx context.Context, destination Destination) error
 }
 
-func NewSource(ctx context.Context, addr string, opts ...Option) (Source, error) {
+func NewSource(ctx context.Context, addr string, addrConnMax int) (Source, error) {
 	switch {
 	case strings.HasPrefix(addr, "file://"):
 		addr = strings.TrimPrefix(addr, "file://")
@@ -58,22 +56,14 @@ func NewSource(ctx context.Context, addr string, opts ...Option) (Source, error)
 	default:
 	}
 
-	drv, db, err := sqlx.LoadDatabase(addr)
+	// Load database.
+	drv, db, err := sqlx.LoadDatabase(addr, addrConnMax)
 	if err != nil {
 		return nil, fmt.Errorf("cannot load database from %q: %w", addr, err)
 	}
 
-	// Configure.
-	for i := range opts {
-		if opts[i] == nil {
-			continue
-		}
-
-		opts[i](db)
-	}
-
 	// Detect connectivity.
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 	defer cancel()
 
 	err = sqlx.IsDatabaseConnected(ctx, db)
@@ -81,7 +71,10 @@ func NewSource(ctx context.Context, addr string, opts ...Option) (Source, error)
 		return nil, fmt.Errorf("cannot connect database on %q: %w", addr, err)
 	}
 
-	return &srcDatabase{drv: drv, db: db}, nil
+	return &srcDatabase{
+		drv: drv,
+		db:  db,
+	}, nil
 }
 
 type srcFile struct {
@@ -97,22 +90,18 @@ func (in *srcFile) Pipe(ctx context.Context, dst Destination) error {
 	ss.Split(split)
 
 	for ss.Scan() {
-		s := ss.Text()
-
-		err := dst.Exec(ctx, s)
+		err := dst.Exec(ctx, ss.Text())
 		if err != nil {
 			return err
 		}
-
-		tflog.Debug(ctx, "Executed", map[string]any{"query": s})
 	}
 
-	return nil
+	return dst.Flush(ctx)
 }
 
 type srcDatabase struct {
 	drv string
-	db  *sql.DB
+	db  *stdsql.DB
 }
 
 func (in *srcDatabase) Close() error {

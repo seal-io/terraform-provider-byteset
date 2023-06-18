@@ -33,6 +33,10 @@ resource "byteset_pipeline" "example" {
 - `destination` (Attributes) (see [below for nested schema](#nestedatt--destination))
 - `source` (Attributes) (see [below for nested schema](#nestedatt--source))
 
+### Optional
+
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
+
 ### Read-Only
 
 - `id` (String) The ID of this resource.
@@ -53,9 +57,14 @@ Required:
 
 Optional:
 
+- `batch_cap` (Number) The maximum value statement number for once insert statements.
 - `conn_max` (Number) The maximum opening connectors of destination database.
 - `salt` (String) The salt assist calculating the destination database has changed 
 but the address not, like the database Terraform Managed Resource ID.
+
+Read-Only:
+
+- `cost` (String) The time consumption of this transfer.
 
 
 <a id="nestedatt--source"></a>
@@ -82,5 +91,14 @@ choose from local/remote SQL file or database.
 Optional:
 
 - `conn_max` (Number) The maximum connections of source database.
+
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String)
+- `update` (String)
 
 

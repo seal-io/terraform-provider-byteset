@@ -3,7 +3,9 @@ package byteset
 import (
 	"context"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -30,28 +32,32 @@ func (r ResourcePipelineSource) Reflect(ctx context.Context) (pipeline.Source, e
 	return pipeline.NewSource(
 		ctx,
 		r.Address.ValueString(),
-		pipeline.WithConnMax(int(r.ConnMax.ValueInt64())),
+		int(r.ConnMax.ValueInt64()),
 	)
 }
 
 type ResourcePipelineDestination struct {
-	Address types.String `tfsdk:"address"`
-	ConnMax types.Int64  `tfsdk:"conn_max"`
-	Salt    types.String `tfsdk:"salt"`
+	Address  types.String `tfsdk:"address"`
+	ConnMax  types.Int64  `tfsdk:"conn_max"`
+	BatchCap types.Int64  `tfsdk:"batch_cap"`
+	Salt     types.String `tfsdk:"salt"`
+	Cost     types.String `tfsdk:"cost"`
 }
 
 func (r ResourcePipelineDestination) Reflect(ctx context.Context) (pipeline.Destination, error) {
 	return pipeline.NewDestination(
 		ctx,
 		r.Address.ValueString(),
-		pipeline.WithConnMax(int(r.ConnMax.ValueInt64())),
+		int(r.ConnMax.ValueInt64()),
+		int(r.BatchCap.ValueInt64()),
 	)
 }
 
 type ResourcePipeline struct {
+	ID          types.String                `tfsdk:"id"`
 	Source      ResourcePipelineSource      `tfsdk:"source"`
 	Destination ResourcePipelineDestination `tfsdk:"destination"`
-	ID          types.String                `tfsdk:"id"`
+	Timeouts    timeouts.Value              `tfsdk:"timeouts"`
 }
 
 func (r ResourcePipeline) Corrupted() bool {
@@ -113,7 +119,7 @@ choose from local/remote SQL file or database.
 					"conn_max": schema.Int64Attribute{
 						Optional:    true,
 						Computed:    true,
-						Default:     int64default.StaticInt64(25),
+						Default:     int64default.StaticInt64(5),
 						Description: `The maximum connections of source database.`,
 						Validators: []validator.Int64{
 							int64validator.AtLeast(1),
@@ -141,8 +147,17 @@ choose from local/remote SQL file or database.
 					"conn_max": schema.Int64Attribute{
 						Optional:    true,
 						Computed:    true,
-						Default:     int64default.StaticInt64(25),
+						Default:     int64default.StaticInt64(5),
 						Description: `The maximum opening connectors of destination database.`,
+						Validators: []validator.Int64{
+							int64validator.AtLeast(1),
+						},
+					},
+					"batch_cap": schema.Int64Attribute{
+						Optional:    true,
+						Computed:    true,
+						Default:     int64default.StaticInt64(500),
+						Description: `The maximum value statement number for once insert statements.`,
 						Validators: []validator.Int64{
 							int64validator.AtLeast(1),
 						},
@@ -155,8 +170,16 @@ choose from local/remote SQL file or database.
 						Description: `The salt assist calculating the destination database has changed 
 but the address not, like the database Terraform Managed Resource ID.`,
 					},
+					"cost": schema.StringAttribute{
+						Computed:    true,
+						Description: `The time consumption of this transfer.`,
+					},
 				},
 			},
+			"timeouts": timeouts.Attributes(ctx, timeouts.Opts{
+				Create: true,
+				Update: true,
+			}),
 		},
 	}
 }
@@ -172,6 +195,18 @@ func (r ResourcePipeline) Create(ctx context.Context, req resource.CreateRequest
 		}
 
 		plan.ID = types.StringValue(plan.Hash())
+
+		timeout, diags := r.Timeouts.Create(ctx, 30*time.Minute)
+		resp.Diagnostics.Append(diags...)
+
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		var cancel func()
+
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
 	}
 
 	src, err := plan.Source.Reflect(ctx)
@@ -198,14 +233,16 @@ func (r ResourcePipeline) Create(ctx context.Context, req resource.CreateRequest
 
 	defer func() { _ = dst.Close() }()
 
-	err = src.Pipe(ctx, dst)
-	if err != nil {
+	start := time.Now()
+
+	if err = src.Pipe(ctx, dst); err != nil {
 		resp.Diagnostics.AddError(
 			"Failed Pipe",
 			"Cannot pipe from source to destination: "+err.Error())
 
 		return
 	}
+	plan.Destination.Cost = types.StringValue(time.Since(start).String())
 
 	plan.Read(
 		ctx,
@@ -254,6 +291,18 @@ func (r ResourcePipeline) Update(ctx context.Context, req resource.UpdateRequest
 		tflog.Debug(ctx, "Plan is changed, recreating...")
 
 		plan.ID = types.StringValue(plan.Hash())
+
+		timeout, diags := r.Timeouts.Create(ctx, 30*time.Minute)
+		resp.Diagnostics.Append(diags...)
+
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		var cancel func()
+
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
 
 		plan.Create(
 			ctx,
