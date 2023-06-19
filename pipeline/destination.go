@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/sourcegraph/conc/pool"
 
 	"github.com/seal-io/terraform-provider-byteset/utils/sqlx"
 )
@@ -24,7 +25,7 @@ type Destination interface {
 	Exec(ctx context.Context, sql string) error
 }
 
-func NewDestination(ctx context.Context, addr string, addrConnMax, bufItemMax int) (Destination, error) {
+func NewDestination(ctx context.Context, addr string, addrConnMax, bufSegCap int) (Destination, error) {
 	// Load database.
 	drv, db, err := sqlx.LoadDatabase(addr, addrConnMax)
 	if err != nil {
@@ -41,11 +42,11 @@ func NewDestination(ctx context.Context, addr string, addrConnMax, bufItemMax in
 	}
 
 	return &dst{
-		drv:        drv,
-		db:         db,
-		dbConnMax:  db.Stats().MaxOpenConnections,
-		buf:        map[string][]string{},
-		bufItemMax: bufItemMax,
+		drv:       drv,
+		db:        db,
+		dbConnMax: db.Stats().MaxOpenConnections,
+		buf:       map[string][][]string{},
+		bufSegCap: bufSegCap,
 	}, nil
 }
 
@@ -54,16 +55,16 @@ type dst struct {
 	db        *stdsql.DB
 	dbConnMax int
 
-	buf        map[string][]string
-	bufItemMax int
+	buf       map[string][][]string
+	bufSegCap int
 
-	st  *stdsql.Conn
-	stC int
+	sentry  *stdsql.Conn
+	sentryC int
 }
 
 func (in *dst) Close() error {
-	if in.st != nil {
-		_ = in.st.Close()
+	if in.sentry != nil {
+		_ = in.sentry.Close()
 	}
 
 	return in.db.Close()
@@ -74,35 +75,52 @@ func (in *dst) Flush(ctx context.Context) error {
 		return nil
 	}
 
-	var ex sqlx.Executor = in.db
-	if in.st != nil {
-		ex = in.st
-	}
-
-	for prefix := range in.buf {
-		// Construct DML(insert).
-		var sb strings.Builder
-
-		sb.WriteString(prefix)
-		sb.WriteString("VALUES ")
-
-		for i := range in.buf[prefix] {
-			if i != 0 {
-				sb.WriteString(", ")
+	// Construct DML(insert).
+	sqls := make([]string, 0,
+		func() (s int) {
+			for i := range in.buf {
+				s += len(in.buf[i])
 			}
 
-			sb.WriteString(in.buf[prefix][i])
-		}
+			return
+		}())
 
-		// Execute DML(insert) in one session.
-		if err := sqlx.Exec(ctx, ex, sb.String()); err != nil {
-			return err
+	for p := range in.buf {
+		for i := 0; i < len(in.buf[p]); i++ {
+			sqls = append(sqls,
+				p+"VALUES "+strings.Join(in.buf[p][i], ", "))
 		}
 	}
 
-	in.buf = map[string][]string{}
+	in.buf = map[string][][]string{}
 
-	return nil
+	// Execute DML(insert) in single session.
+	if in.sentry != nil {
+		for i := 0; i < len(sqls); i++ {
+			err := sqlx.Exec(ctx, in.sentry, sqls[i])
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
+	// Or Execute DML(insert) in multiple sessions.
+	gp := pool.New().
+		WithMaxGoroutines(in.dbConnMax).
+		WithContext(ctx).
+		WithFirstError()
+
+	for i := 0; i < len(sqls); i++ {
+		sql := sqls[i]
+
+		gp.Go(func(ctx context.Context) error {
+			return sqlx.Exec(ctx, in.db, sql)
+		})
+	}
+
+	return gp.Wait()
 }
 
 func (in *dst) Exec(ctx context.Context, sql string) error {
@@ -127,12 +145,12 @@ func (in *dst) Exec(ctx context.Context, sql string) error {
 func (in *dst) exec(ctx context.Context, sqlp sqlx.Parsed, sql string) error {
 	if typ, ok := sqlp.TCL(); ok {
 		// Prepare sentry.
-		if in.st == nil {
+		if in.sentry == nil {
 			conn, err := in.db.Conn(ctx)
 			if err != nil {
 				return err
 			}
-			in.st = conn
+			in.sentry = conn
 		}
 
 		// Flush.
@@ -141,23 +159,23 @@ func (in *dst) exec(ctx context.Context, sqlp sqlx.Parsed, sql string) error {
 		}
 
 		// Execute TCL in sentry session.
-		if err := sqlx.Exec(ctx, in.st, sql); err != nil {
+		if err := sqlx.Exec(ctx, in.sentry, sql); err != nil {
 			return err
 		}
 
 		if typ == sqlx.StartTCL {
-			in.stC += 1
+			in.sentryC += 1
 		} else {
-			in.stC -= 1
+			in.sentryC -= 1
 		}
 
 		// Release sentry.
-		if in.stC <= 0 {
-			err := in.st.Close()
+		if in.sentryC <= 0 {
+			err := in.sentry.Close()
 			if err != nil {
 				return err
 			}
-			in.st = nil
+			in.sentry = nil
 		}
 
 		return nil
@@ -170,8 +188,8 @@ func (in *dst) exec(ctx context.Context, sqlp sqlx.Parsed, sql string) error {
 		}
 
 		var ex sqlx.Executor = in.db
-		if in.st != nil {
-			ex = in.st
+		if in.sentry != nil {
+			ex = in.sentry
 		}
 
 		// Execute DDL/DCL in one session.
@@ -181,11 +199,30 @@ func (in *dst) exec(ctx context.Context, sqlp sqlx.Parsed, sql string) error {
 	if typ, ok := sqlp.DML(); ok {
 		inst, ok := sqlp.AsDMLInsert()
 		if ok {
-			// Cache inserts.
-			in.buf[inst.Prefix] = append(in.buf[inst.Prefix], inst.Values...)
+			// Prepare first buffer segment.
+			if len(in.buf[inst.Prefix]) == 0 {
+				in.buf[inst.Prefix] = append(in.buf[inst.Prefix], nil)
+			}
 
-			// Flush if reaches limitation.
-			if len(in.buf[inst.Prefix]) >= in.bufItemMax || len(in.buf) >= in.dbConnMax {
+			lsi := len(in.buf[inst.Prefix]) - 1
+
+			// Append latest buffer segment.
+			in.buf[inst.Prefix][lsi] = append(in.buf[inst.Prefix][lsi], inst.Values...)
+
+			// Increase segment of buffer.
+			if len(in.buf[inst.Prefix][lsi]) >= in.bufSegCap {
+				if len(in.buf[inst.Prefix]) < in.dbConnMax {
+					in.buf[inst.Prefix] = append(in.buf[inst.Prefix], nil)
+					lsi += 1
+				}
+			}
+
+			// Flush if reaches limitations.
+			isBufFull := in.dbConnMax != 1 && len(in.buf) >= in.dbConnMax
+			isBufSegFull := (in.sentry != nil || lsi >= in.dbConnMax) &&
+				len(in.buf[inst.Prefix][lsi]) >= in.bufSegCap
+
+			if isBufFull || isBufSegFull {
 				return in.Flush(ctx)
 			}
 
@@ -198,8 +235,8 @@ func (in *dst) exec(ctx context.Context, sqlp sqlx.Parsed, sql string) error {
 		}
 
 		// Execute DML in sentry session if found.
-		if in.st != nil {
-			return sqlx.Exec(ctx, in.st, sql)
+		if in.sentry != nil {
+			return sqlx.Exec(ctx, in.sentry, sql)
 		}
 
 		// Execute DML in single session.
@@ -207,7 +244,7 @@ func (in *dst) exec(ctx context.Context, sqlp sqlx.Parsed, sql string) error {
 			return sqlx.Exec(ctx, in.db, sql)
 		}
 
-		// Execute DML in multiple sessions.
+		// Or Execute DML in multiple sessions.
 		cs := make([]*stdsql.Conn, 0, in.dbConnMax)
 		defer func() {
 			for i := range cs {
@@ -222,13 +259,22 @@ func (in *dst) exec(ctx context.Context, sqlp sqlx.Parsed, sql string) error {
 			}
 
 			cs = append(cs, c)
-
-			if err = sqlx.Exec(ctx, c, sql); err != nil {
-				return err
-			}
 		}
 
-		return nil
+		gp := pool.New().
+			WithMaxGoroutines(in.dbConnMax).
+			WithContext(ctx).
+			WithFirstError()
+
+		for i := 0; i < in.dbConnMax; i++ {
+			c := cs[i]
+
+			gp.Go(func(ctx context.Context) error {
+				return sqlx.Exec(ctx, c, sql)
+			})
+		}
+
+		return gp.Wait()
 	}
 
 	return errors.New("nothing to do")
