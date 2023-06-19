@@ -58,13 +58,13 @@ type dst struct {
 	buf       map[string][][]string
 	bufSegCap int
 
-	st  *stdsql.Conn
-	stC int
+	sentry    *stdsql.Conn
+	sentryUse int
 }
 
 func (in *dst) Close() error {
-	if in.st != nil {
-		_ = in.st.Close()
+	if in.sentry != nil {
+		_ = in.sentry.Close()
 	}
 
 	return in.db.Close()
@@ -94,12 +94,19 @@ func (in *dst) Flush(ctx context.Context) error {
 
 	in.buf = map[string][][]string{}
 
-	// Execute DML(insert).
-	var ex sqlx.Executor = in.db
-	if in.st != nil {
-		ex = in.st
+	// Execute DML(insert) in single session.
+	if in.sentry != nil {
+		for i := 0; i < len(sqls); i++ {
+			err := sqlx.Exec(ctx, in.sentry, sqls[i])
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
 	}
 
+	// Or execute DML(insert) in multiple sessions.
 	gp := pool.New().
 		WithMaxGoroutines(in.dbConnMax).
 		WithContext(ctx).
@@ -109,7 +116,7 @@ func (in *dst) Flush(ctx context.Context) error {
 		sql := sqls[i]
 
 		gp.Go(func(ctx context.Context) error {
-			return sqlx.Exec(ctx, ex, sql)
+			return sqlx.Exec(ctx, in.db, sql)
 		})
 	}
 
@@ -138,12 +145,12 @@ func (in *dst) Exec(ctx context.Context, sql string) error {
 func (in *dst) exec(ctx context.Context, sqlp sqlx.Parsed, sql string) error {
 	if typ, ok := sqlp.TCL(); ok {
 		// Prepare sentry.
-		if in.st == nil {
+		if in.sentry == nil {
 			conn, err := in.db.Conn(ctx)
 			if err != nil {
 				return err
 			}
-			in.st = conn
+			in.sentry = conn
 		}
 
 		// Flush.
@@ -152,23 +159,23 @@ func (in *dst) exec(ctx context.Context, sqlp sqlx.Parsed, sql string) error {
 		}
 
 		// Execute TCL in sentry session.
-		if err := sqlx.Exec(ctx, in.st, sql); err != nil {
+		if err := sqlx.Exec(ctx, in.sentry, sql); err != nil {
 			return err
 		}
 
 		if typ == sqlx.StartTCL {
-			in.stC += 1
+			in.sentryUse += 1
 		} else {
-			in.stC -= 1
+			in.sentryUse -= 1
 		}
 
 		// Release sentry.
-		if in.stC <= 0 {
-			err := in.st.Close()
+		if in.sentryUse <= 0 {
+			err := in.sentry.Close()
 			if err != nil {
 				return err
 			}
-			in.st = nil
+			in.sentry = nil
 		}
 
 		return nil
@@ -181,8 +188,8 @@ func (in *dst) exec(ctx context.Context, sqlp sqlx.Parsed, sql string) error {
 		}
 
 		var ex sqlx.Executor = in.db
-		if in.st != nil {
-			ex = in.st
+		if in.sentry != nil {
+			ex = in.sentry
 		}
 
 		// Execute DDL/DCL in one session.
@@ -212,7 +219,8 @@ func (in *dst) exec(ctx context.Context, sqlp sqlx.Parsed, sql string) error {
 
 			// Flush if reaches limitations.
 			isBufFull := in.dbConnMax != 1 && len(in.buf) >= in.dbConnMax
-			isBufSegFull := lsi >= in.dbConnMax && len(in.buf[inst.Prefix][lsi]) >= in.bufSegCap
+			isBufSegFull := (in.sentry != nil || lsi >= in.dbConnMax) &&
+				len(in.buf[inst.Prefix][lsi]) >= in.bufSegCap
 
 			if isBufFull || isBufSegFull {
 				return in.Flush(ctx)
@@ -227,8 +235,8 @@ func (in *dst) exec(ctx context.Context, sqlp sqlx.Parsed, sql string) error {
 		}
 
 		// Execute DML in sentry session if found.
-		if in.st != nil {
-			return sqlx.Exec(ctx, in.st, sql)
+		if in.sentry != nil {
+			return sqlx.Exec(ctx, in.sentry, sql)
 		}
 
 		// Execute DML in single session.
@@ -236,7 +244,7 @@ func (in *dst) exec(ctx context.Context, sqlp sqlx.Parsed, sql string) error {
 			return sqlx.Exec(ctx, in.db, sql)
 		}
 
-		// Execute DML in multiple sessions.
+		// Or execute DML in multiple sessions.
 		cs := make([]*stdsql.Conn, 0, in.dbConnMax)
 		defer func() {
 			for i := range cs {
