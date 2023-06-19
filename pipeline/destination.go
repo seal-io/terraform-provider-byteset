@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/sourcegraph/conc/pool"
 
 	"github.com/seal-io/terraform-provider-byteset/utils/sqlx"
 )
@@ -24,7 +25,7 @@ type Destination interface {
 	Exec(ctx context.Context, sql string) error
 }
 
-func NewDestination(ctx context.Context, addr string, addrConnMax, bufItemMax int) (Destination, error) {
+func NewDestination(ctx context.Context, addr string, addrConnMax, bufSegCap int) (Destination, error) {
 	// Load database.
 	drv, db, err := sqlx.LoadDatabase(addr, addrConnMax)
 	if err != nil {
@@ -41,11 +42,11 @@ func NewDestination(ctx context.Context, addr string, addrConnMax, bufItemMax in
 	}
 
 	return &dst{
-		drv:        drv,
-		db:         db,
-		dbConnMax:  db.Stats().MaxOpenConnections,
-		buf:        map[string][]string{},
-		bufItemMax: bufItemMax,
+		drv:       drv,
+		db:        db,
+		dbConnMax: db.Stats().MaxOpenConnections,
+		buf:       map[string][][]string{},
+		bufSegCap: bufSegCap,
 	}, nil
 }
 
@@ -54,8 +55,8 @@ type dst struct {
 	db        *stdsql.DB
 	dbConnMax int
 
-	buf        map[string][]string
-	bufItemMax int
+	buf       map[string][][]string
+	bufSegCap int
 
 	st  *stdsql.Conn
 	stC int
@@ -74,35 +75,45 @@ func (in *dst) Flush(ctx context.Context) error {
 		return nil
 	}
 
+	// Construct DML(insert).
+	sqls := make([]string, 0,
+		func() (s int) {
+			for i := range in.buf {
+				s += len(in.buf[i])
+			}
+
+			return
+		}())
+
+	for p := range in.buf {
+		for i := 0; i < len(in.buf[p]); i++ {
+			sqls = append(sqls,
+				p+"VALUES "+strings.Join(in.buf[p][i], ", "))
+		}
+	}
+
+	in.buf = map[string][][]string{}
+
+	// Execute DML(insert).
 	var ex sqlx.Executor = in.db
 	if in.st != nil {
 		ex = in.st
 	}
 
-	for prefix := range in.buf {
-		// Construct DML(insert).
-		var sb strings.Builder
+	gp := pool.New().
+		WithMaxGoroutines(in.dbConnMax).
+		WithContext(ctx).
+		WithFirstError()
 
-		sb.WriteString(prefix)
-		sb.WriteString("VALUES ")
+	for i := 0; i < len(sqls); i++ {
+		sql := sqls[i]
 
-		for i := range in.buf[prefix] {
-			if i != 0 {
-				sb.WriteString(", ")
-			}
-
-			sb.WriteString(in.buf[prefix][i])
-		}
-
-		// Execute DML(insert) in one session.
-		if err := sqlx.Exec(ctx, ex, sb.String()); err != nil {
-			return err
-		}
+		gp.Go(func(ctx context.Context) error {
+			return sqlx.Exec(ctx, ex, sql)
+		})
 	}
 
-	in.buf = map[string][]string{}
-
-	return nil
+	return gp.Wait()
 }
 
 func (in *dst) Exec(ctx context.Context, sql string) error {
@@ -181,11 +192,29 @@ func (in *dst) exec(ctx context.Context, sqlp sqlx.Parsed, sql string) error {
 	if typ, ok := sqlp.DML(); ok {
 		inst, ok := sqlp.AsDMLInsert()
 		if ok {
-			// Cache inserts.
-			in.buf[inst.Prefix] = append(in.buf[inst.Prefix], inst.Values...)
+			// Prepare first buffer segment.
+			if len(in.buf[inst.Prefix]) == 0 {
+				in.buf[inst.Prefix] = append(in.buf[inst.Prefix], nil)
+			}
 
-			// Flush if reaches limitation.
-			if len(in.buf[inst.Prefix]) >= in.bufItemMax || len(in.buf) >= in.dbConnMax {
+			lsi := len(in.buf[inst.Prefix]) - 1
+
+			// Append latest buffer segment.
+			in.buf[inst.Prefix][lsi] = append(in.buf[inst.Prefix][lsi], inst.Values...)
+
+			// Increase segment of buffer.
+			if len(in.buf[inst.Prefix][lsi]) >= in.bufSegCap {
+				if len(in.buf[inst.Prefix]) < in.dbConnMax {
+					in.buf[inst.Prefix] = append(in.buf[inst.Prefix], nil)
+					lsi += 1
+				}
+			}
+
+			// Flush if reaches limitations.
+			isBufFull := in.dbConnMax != 1 && len(in.buf) >= in.dbConnMax
+			isBufSegFull := lsi >= in.dbConnMax && len(in.buf[inst.Prefix][lsi]) >= in.bufSegCap
+
+			if isBufFull || isBufSegFull {
 				return in.Flush(ctx)
 			}
 
@@ -222,13 +251,22 @@ func (in *dst) exec(ctx context.Context, sqlp sqlx.Parsed, sql string) error {
 			}
 
 			cs = append(cs, c)
-
-			if err = sqlx.Exec(ctx, c, sql); err != nil {
-				return err
-			}
 		}
 
-		return nil
+		gp := pool.New().
+			WithMaxGoroutines(in.dbConnMax).
+			WithContext(ctx).
+			WithFirstError()
+
+		for i := 0; i < in.dbConnMax; i++ {
+			c := cs[i]
+
+			gp.Go(func(ctx context.Context) error {
+				return sqlx.Exec(ctx, c, sql)
+			})
+		}
+
+		return gp.Wait()
 	}
 
 	return errors.New("nothing to do")
