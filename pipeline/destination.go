@@ -124,17 +124,14 @@ func (in *dst) Flush(ctx context.Context) error {
 }
 
 func (in *dst) Exec(ctx context.Context, sql string) error {
-	sqlp, err := sqlx.Parse(in.drv, sql)
-	if err != nil {
-		return fmt.Errorf("failed to parse sql %q: %w", sql, err)
-	}
+	sqlp := sqlx.Parse(in.drv, sql)
 
 	if sqlp.Unknown() {
 		tflog.Trace(ctx, "Ignored", map[string]any{"sql": sql})
 		return nil
 	}
 
-	err = in.exec(ctx, sqlp, sql)
+	err := in.exec(ctx, sqlp, sql)
 	if err != nil {
 		return fmt.Errorf("failed to execute sql %q: %w", sql, err)
 	}

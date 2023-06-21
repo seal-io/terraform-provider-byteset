@@ -1,23 +1,20 @@
 package sqlx
 
 import (
-	"strings"
-
 	vp "vitess.io/vitess/go/vt/sqlparser"
 
 	cp "github.com/cockroachdb/cockroach/pkg/sql/parser"
-	cps "github.com/cockroachdb/cockroach/pkg/sql/parser/statements"
 	cpt "github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 )
 
-type TCLLevel uint
+type TCLLevel = uint
 
 const (
 	StartTCL TCLLevel = iota + 1
 	EndTCL
 )
 
-type DMLLevel uint
+type DMLLevel = uint
 
 const (
 	SingleSessionDML DMLLevel = iota + 1
@@ -46,209 +43,71 @@ type Parsed interface {
 	AsDMLInsert() (DMLInsert, bool)
 }
 
-func Parse(drv, sql string) (Parsed, error) {
-	if drv == PostgresDialect {
-		// TODO parse COPY FROM statement.
-		stmt, err := cp.ParseOne(sql)
-		if err != nil {
-			if err.Error() != "expected 1 statement, but found 0" {
-				return nil, err
-			}
-		}
-
-		var stmtType cpt.StatementType = -1
-		if stmt.AST != nil {
-			stmtType = stmt.AST.StatementType()
-		}
-
-		return cockroachParsed{
-			original: sql,
-			stmt:     stmt,
-			stmtType: stmtType,
-		}, nil
+func Parse(drv, sql string) Parsed {
+	return &parsed{
+		drv:      drv,
+		raw:      sql,
+		stmtType: Preview(sql),
 	}
-
-	stmtType := vp.Preview(sql)
-
-	return vitessParsed{
-		original: sql,
-		stmtType: stmtType,
-	}, nil
 }
 
-type vitessParsed struct {
-	original string
-	stmtType vp.StatementType
+type parsed struct {
+	drv      string
+	raw      string
+	stmtType StatementType
 }
 
-func (p vitessParsed) Origin() string {
-	return p.original
+func (p parsed) Origin() string {
+	return p.raw
 }
 
-func (p vitessParsed) Unknown() bool {
-	switch p.stmtType {
-	case vp.StmtCommentOnly, vp.StmtUnknown:
-		return true
+func (p parsed) Unknown() bool {
+	return p.stmtType == StatementTypeUnknown
+}
+
+func (p parsed) TCL() (TCLLevel, bool) {
+	b := p.stmtType & StatementTypeTCL
+	if b == 0 {
+		return 0, false
 	}
-
-	return false
+	return p.stmtType - StatementTypeTCL + 1, true
 }
 
-func (p vitessParsed) TCL() (TCLLevel, bool) {
-	switch p.stmtType {
-	case vp.StmtLockTables,
-		vp.StmtBegin,
-		vp.StmtSavepoint:
-		return StartTCL, true
-	case vp.StmtUnlockTables,
-		vp.StmtCommit, vp.StmtRollback,
-		vp.StmtSRollback, vp.StmtRelease:
-		return EndTCL, true
+func (p parsed) DCL() bool {
+	return p.stmtType == StatementTypeDCL
+}
+
+func (p parsed) DDL() bool {
+	return p.stmtType == StatementTypeDDL
+}
+
+func (p parsed) DML() (DMLLevel, bool) {
+	b := p.stmtType & StatementTypeDML
+	if b == 0 {
+		return 0, false
 	}
-
-	return 0, false
+	return p.stmtType - StatementTypeDML + 1, true
 }
 
-func (p vitessParsed) DCL() bool {
-	switch p.stmtType {
-	case vp.StmtRevert, vp.StmtFlush,
-		vp.StmtStream, vp.StmtVStream, vp.StmtCallProc:
-		return true
-	}
-
-	return false
-}
-
-func (p vitessParsed) DDL() bool {
-	switch p.stmtType {
-	case vp.StmtDDL, vp.StmtPriv:
-		return true
-	}
-
-	return false
-}
-
-func (p vitessParsed) DML() (DMLLevel, bool) {
-	switch p.stmtType {
-	case vp.StmtSelect, vp.StmtExplain, vp.StmtShow, vp.StmtOther,
-		vp.StmtInsert, vp.StmtReplace, vp.StmtUpdate, vp.StmtDelete:
-		return SingleSessionDML, true
-	case vp.StmtSet, vp.StmtUse, vp.StmtComment:
-		return MultiSessionsDML, true
-	}
-
-	return 0, false
-}
-
-func (p vitessParsed) AsDMLInsert() (DMLInsert, bool) {
-	if typ, _ := p.DML(); typ != SingleSessionDML {
+func (p parsed) AsDMLInsert() (DMLInsert, bool) {
+	if p.stmtType != StatementTypeDMLSingle {
 		return DMLInsert{}, false
 	}
 
-	stmt, err := vp.Parse(p.original)
+	if p.drv == PostgresDialect {
+		return parsePostgres(p.raw)
+	}
+
+	return parse(p.raw)
+}
+
+func parsePostgres(raw string) (DMLInsert, bool) {
+	stmt, err := cp.ParseOne(raw)
 	if err != nil {
 		return DMLInsert{}, false
 	}
 
-	in, ok := stmt.(*vp.Insert)
-	if !ok ||
-		in.Action != vp.InsertAct ||
-		len(in.OnDup) != 0 ||
-		in.Rows == nil {
-		return DMLInsert{}, false
-	}
-
-	var is DMLInsert
-
-	switch t := in.Rows.(type) {
-	default:
-		return DMLInsert{}, false
-	case vp.Values:
-		for _, v := range t {
-			vb := vp.NewTrackedBuffer(nil)
-			v.Format(vb)
-			is.Values = append(is.Values, vb.String())
-		}
-	}
-
-	pb := vp.NewTrackedBuffer(nil)
-	pb.SetEscapeAllIdentifiers(true)
-
-	pb.WriteString("INSERT ")
-
-	if in.Comments != nil {
-		in.Comments.Format(pb)
-	}
-
-	if in.Ignore {
-		pb.WriteString("IGNORE ")
-	}
-
-	pb.WriteString("INTO ")
-	in.Table.Format(pb)
-	pb.WriteString(" ")
-	in.Partitions.Format(pb)
-	in.Columns.Format(pb)
-	pb.WriteString(" ")
-	is.Prefix = pb.String()
-
-	return is, true
-}
-
-type cockroachParsed struct {
-	original string
-	stmt     cps.Statement[cpt.Statement]
-	stmtType cpt.StatementType
-}
-
-func (p cockroachParsed) Origin() string {
-	return p.original
-}
-
-func (p cockroachParsed) Unknown() bool {
-	return p.stmtType == -1
-}
-
-func (p cockroachParsed) TCL() (TCLLevel, bool) {
-	if p.stmtType == cpt.TypeTCL {
-		switch p.stmt.AST.(type) {
-		case *cpt.BeginTransaction:
-			return StartTCL, true
-		case *cpt.CommitTransaction, *cpt.RollbackTransaction:
-			return EndTCL, true
-		}
-	}
-
-	return 0, false
-}
-
-func (p cockroachParsed) DCL() bool {
-	return p.stmtType == cpt.TypeDCL
-}
-
-func (p cockroachParsed) DDL() bool {
-	return p.stmtType == cpt.TypeDDL
-}
-
-func (p cockroachParsed) DML() (DMLLevel, bool) {
-	if p.stmtType != cpt.TypeDML {
-		return 0, false
-	}
-
-	st := p.stmt.AST.StatementTag()
-	if st == "SET" || strings.HasPrefix(st, "SET ") {
-		return MultiSessionsDML, true
-	}
-
-	return SingleSessionDML, true
-}
-
-func (p cockroachParsed) AsDMLInsert() (DMLInsert, bool) {
-	if typ, _ := p.DML(); typ != SingleSessionDML {
-		return DMLInsert{}, false
-	}
-
-	switch in := p.stmt.AST.(type) {
+	switch in := stmt.AST.(type) {
 	case *cpt.Insert:
 		if in.OnConflict.IsUpsertAlias() ||
 			cpt.HasReturningClause(in.Returning) ||
@@ -296,4 +155,55 @@ func (p cockroachParsed) AsDMLInsert() (DMLInsert, bool) {
 	}
 
 	return DMLInsert{}, false
+}
+
+func parse(raw string) (DMLInsert, bool) {
+	stmt, err := vp.Parse(raw)
+	if err != nil {
+		return DMLInsert{}, false
+	}
+
+	in, ok := stmt.(*vp.Insert)
+	if !ok ||
+		in.Action != vp.InsertAct ||
+		len(in.OnDup) != 0 ||
+		in.Rows == nil {
+		return DMLInsert{}, false
+	}
+
+	var is DMLInsert
+
+	switch t := in.Rows.(type) {
+	default:
+		return DMLInsert{}, false
+	case vp.Values:
+		for _, v := range t {
+			vb := vp.NewTrackedBuffer(nil)
+			v.Format(vb)
+			is.Values = append(is.Values, vb.String())
+		}
+	}
+
+	pb := vp.NewTrackedBuffer(nil)
+	pb.SetEscapeAllIdentifiers(true)
+
+	pb.WriteString("INSERT ")
+
+	if in.Comments != nil {
+		in.Comments.Format(pb)
+	}
+
+	if in.Ignore {
+		pb.WriteString("IGNORE ")
+	}
+
+	pb.WriteString("INTO ")
+	in.Table.Format(pb)
+	pb.WriteString(" ")
+	in.Partitions.Format(pb)
+	in.Columns.Format(pb)
+	pb.WriteString(" ")
+	is.Prefix = pb.String()
+
+	return is, true
 }
