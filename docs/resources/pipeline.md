@@ -50,8 +50,8 @@ Required:
 - `address` (String) The address of destination database, which to receive the dataset.
 
   - Database address format:
-	  - mysql://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
-	  - maria|mariadb://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
+	  - mysql://[username:[password]@][protocol([address][:port])][/dbname][?param1=value1&...]
+	  - maria|mariadb://[username:[password]@][protocol([address][:port])][/dbname][?param1=value1&...]
 	  - postgres|postgresql://[username:[password]@][address][:port][/dbname][?param1=value1&...]
 	  - oracle://[username:[password]@][address][:port][/service][?param1=value1&...]
 	  - mssql|sqlserver://[username:[password]@][address][:port][/instance][?database=dbname&param1=value1&...]
@@ -79,8 +79,8 @@ choose from local/remote SQL file or database.
 	  - raw+base64://...
 
   - Database address format:
-	  - mysql://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
-	  - maria|mariadb://[username:[password]@][protocol[(address)]][:port][/dbname][?param1=value1&...]
+	  - mysql://[username:[password]@][protocol([address][:port])][/dbname][?param1=value1&...]
+	  - maria|mariadb://[username:[password]@][protocol([address][:port])][/dbname][?param1=value1&...]
 	  - postgres|postgresql://[username:[password]@][address][:port][/dbname][?param1=value1&...]
 	  - oracle://[username:[password]@][address][:port][/service][?param1=value1&...]
 	  - mssql|sqlserver://[username:[password]@][address][:port][/instance][?database=dbname&param1=value1&...]
