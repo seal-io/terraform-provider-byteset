@@ -68,11 +68,14 @@ function seal::version::get_version_vars() {
     # specify to dev if the tree is dirty.
     if [[ "${GIT_TREE_STATE:-dirty}" == "dirty" ]]; then
       GIT_VERSION="dev"
-    elif ! [[ "${GIT_VERSION}" =~ ^v([0-9]+)\.([0-9]+)(\.[0-9]+)?(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
-      GIT_VERSION="dev"
     fi
 
     # respect specified version
     GIT_VERSION=${VERSION:-${GIT_VERSION}}
+
+    if ! [[ "${GIT_VERSION}" =~ ^v([0-9]+)\.([0-9]+)(\.[0-9]+)?(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+      GIT_VERSION="dev"
+    fi
+
   fi
 }
